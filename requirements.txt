@@ -1,0 +1,8 @@
+# Python 3.11+ (tested 3.13, Linux, 4 cores)
+numpy>=2.0
+scipy>=1.14
+numba>=0.60          # critical-plane kernel
+matplotlib>=3.8
+pytest>=8
+ngsolve>=6.2.2607    # FE studies (includes netgen); not needed for the kernel alone
+# CalculiX ccx 2.21 (Debian/Ubuntu: apt install calculix-ccx) - only for ccx_io.py / ccx_ngsolve.py
