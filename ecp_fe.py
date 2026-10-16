@@ -65,10 +65,10 @@ def averages(pts, w, vals, x0, rcs=RCS, point_vals=None):
     for k, v in enumerate(vals):
         A = np.empty((len(rcs), 6))
         for i, r in enumerate(rcs):
-            if r == 0:
+            m = d <= r
+            if r == 0 or m.sum() < 8:                                # radius below the quadrature spacing
                 A[i] = point_vals[k]
             else:
-                m = d <= r
                 A[i] = (w[m, None] * v[m]).sum(0) / w[m].sum()
         out.append(A)
     return out
@@ -186,7 +186,7 @@ def plate_face(geom):
     return face - notch, np.array([x0, 0.0])
 
 
-def plate_mesh(geom, h_fine, z_hot, maxh=3.0, r_fine=0.6):
+def plate_mesh(geom, h_fine, z_hot, maxh=3.0, r_fine=0.6, line=1.5):
     from netgen.occ import OCCGeometry, Z, X, Y
     from netgen.meshing import MeshingParameters
     f, root = plate_face(geom)
@@ -195,7 +195,7 @@ def plate_mesh(geom, h_fine, z_hot, maxh=3.0, r_fine=0.6):
     sol.faces.Min(Y).name = "bottom"
     sol.faces.Max(Y).name = "top"
     mp = MeshingParameters(maxh=maxh, grading=0.3)
-    h_line = 1.5 * h_fine
+    h_line = line * h_fine
     for zz in np.arange(0, T_PL / 2 + 1e-9, h_line):                   # whole root line, to locate the hot spot
         mp.RestrictH(x=root[0], y=root[1], z=zz, h=h_line)
     restrict_ball(mp, np.r_[root, z_hot], r_fine, h_fine, 3)
@@ -205,13 +205,13 @@ def plate_mesh(geom, h_fine, z_hot, maxh=3.0, r_fine=0.6):
     return OCCGeometry(sol).GenerateMesh(mp), root
 
 
-def solve_plate(geom, h_fine, z_hot):
+def solve_plate(geom, h_fine, z_hot, **mk):
     """F = 1 N axial (gross traction 1/150 MPa on the top face), bottom face clamped, mid-plane symmetry."""
     from ngsolve import Mesh, VectorH1, BilinearForm, LinearForm, GridFunction, CF, Sym, Grad, Id, Trace, \
         InnerProduct, ds, dx, TaskManager, SetNumThreads, Preconditioner
     from ngsolve.krylovspace import CGSolver
     SetNumThreads(4)
-    ng, root = plate_mesh(geom, h_fine, z_hot)
+    ng, root = plate_mesh(geom, h_fine, z_hot, **mk)
     mesh = Mesh(ng)
     fes = VectorH1(mesh, order=2, dirichlet="bottom", dirichletz="zsym")
     u, v = fes.TnT()
@@ -242,13 +242,13 @@ def root_line(m, geom, nz=121):
     return z, np.asarray(m["S"](P)).reshape(nz, 6)
 
 
-def plate_factors(geom, h_fine, h_line=None, order=4, z_hot=None):
+def plate_factors(geom, h_fine, h_line=None, order=4, z_hot=None, **mk):
     if z_hot is None:                                                   # pass 1: locate the hot spot through t
         m0 = solve_plate(geom, 2 * h_fine, 0.0)
         z, Sz = root_line(m0, geom)
         tz = cp.search_prop(Sz, 0 * Sz, cp.MWCM())["tau_a"]
         z_hot = float(z[np.argmax(tz)])
-    m = solve_plate(geom, h_fine, z_hot)
+    m = solve_plate(geom, h_fine, z_hot, **mk)
     z, Sz = root_line(m, geom)
     tz = cp.search_prop(Sz, 0 * Sz, cp.MWCM())["tau_a"]
     j = int(np.argmin(np.abs(z - z_hot)))
