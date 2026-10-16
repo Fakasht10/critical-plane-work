@@ -81,7 +81,7 @@ COL = {"MCC": "#2a78d6", "MRH": "#1baf7a", "path length / 4": "#eda100", "MCC x 
 
 
 def figure(o, Y):
-    fig, ax = plt.subplots(1, 2, figsize=(9.4, 3.8), gridspec_kw=dict(width_ratios=[1, 1.7]))
+    fig, ax = plt.subplots(1, 2, figsize=(10.4, 4.2), gridspec_kw=dict(width_ratios=[1, 1.9], wspace=0.55))
     u, v = Y[:, 1] - Y[:, 1].mean(), Y[:, 2] - Y[:, 2].mean()
     ax[0].plot(np.r_[u, u[:1]], np.r_[v, v[:1]], color="#0b0b0b", lw=1.6, label="shear path")
     R = cp.shear_amplitude(u[None], v[None], "mcc")[0]
@@ -94,8 +94,9 @@ def figure(o, Y):
                label=f"length / 4: {Rl:.0f}")
     ax[0].set_aspect("equal")
     ax[0].set(xlabel=r"$\tau_u$ [MPa]", ylabel=r"$\tau_v$ [MPa]",
-              title=f"Critical-plane shear path\n{o['example']['name']}, " + "$r_c$ = 0.2 mm", )
-    ax[0].legend(fontsize=7, loc="lower left")
+              title="Critical-plane shear path\n" + o["example"]["name"].replace(", 90 deg", "\n90 deg") + ", $r_c$ = 0.2 mm")
+    ax[0].title.set_fontsize(8.5)
+    ax[0].legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2)
     tags = list(o["per_series"])
     labels = list(o["per_series"][tags[0]])
     for k, tag in enumerate(tags):
@@ -112,13 +113,12 @@ def figure(o, Y):
     ax[1].set(xlabel="$E_N$ = log$_{10}$($N_f/N_{exp}$), mean ± std  (> 0 conservative; dashed: factor 3)",
               title="90 deg out-of-phase series: prediction error by shear-amplitude measure")
     ax[1].legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1.0))
-    fig.tight_layout()
     _save(fig, OUT, "ecp_amplitude")
 
 
 def report(o):
     V = o["variants"]
-    f = lambda d: f"{d['mean']:+.2f} | {d['std']:.2f} | {100 * d['in2']:.0f} | {100 * d['in3']:.0f}"
+    f = lambda d: f"{d['mean']:+.2f} / {d['std']:.2f} / {100 * d['in2']:.0f} / {100 * d['in3']:.0f}"
     best = min(["MCC", "MRH", "path length / 4"], key=lambda k: V[k]["outphase"]["rms"])
     L = ["# Shear-amplitude measure for 90 deg out-of-phase loading (ECP, En3B V-notched bars)", "",
          "**Summary.**",
@@ -142,7 +142,7 @@ def report(o):
          "next refinement, but it needs an extra calibration series.",
          "",
          "## All 19 prevision series and by family (r_c = 0.2 mm)",
-         "Cells: mean E_N | std | % within factor 2 | % within factor 3.", "",
+         "Cells: mean E_N / std / % within factor 2 / % within factor 3.", "",
          "| variant | all 19 | in-phase | 90 deg | 90 deg, R = -1 | 90 deg, R = 0 |", "|---|---|---|---|---|---|"]
     for tag, d in V.items():
         L.append(f"| {tag} | {f(d['all'])} | {f(d['inphase'])} | {f(d['outphase'])} | {f(d['p90_R1'])} | {f(d['p90_R0'])} |")

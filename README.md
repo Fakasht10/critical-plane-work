@@ -8,8 +8,8 @@ checks, and the limits found by an independent audit are stated in the reports.
 
 | file | what |
 |---|---|
-| `cplane.py` | Numba kernel. Criteria: Findley, MWCM, elastic SWT, Walker, Fatemi-Socie. Proportional constant amplitude (`search_prop`) and one general non-proportional cycle with minimum-circumscribed-circle shear amplitude (`search_path`). Orientation-dependent strength (build or fibre direction), hot-spot screening, `superpose` for unit load cases. |
-| `tests/test_cplane.py` | 20 tests: closed forms, MCC, brute force incl. anisotropic crease, rotation invariance, bound validity, screening |
+| `cplane.py` | Numba kernel. Criteria: Findley, MWCM, elastic SWT, Walker, Fatemi-Socie. Proportional constant amplitude (`search_prop`) and one general non-proportional cycle (`search_path`) with a choice of shear amplitude: minimum circumscribed circle (default), maximum rectangular hull, or path length / 4. Orientation-dependent strength (build or fibre direction), hot-spot screening, `superpose` for unit load cases. |
+| `tests/test_cplane.py` | 23 tests: closed forms, MCC, brute force incl. anisotropic crease, rotation invariance, bound validity, screening |
 | `cplane_bench.py` | speed / accuracy vs a naive loop and a dense 1 deg grid, 1e3-1e6 points -> `results/CPLANE_SPEED.md` |
 | `ccx_io.py`, `ccx_ngsolve.py` | CalculiX C3D10 deck writer / runner / .frd reader; same mesh in NGSolve P2 and ccx, Kt anchors, critical plane on both -> `results/CCX_NGSOLVE.md` |
 | `cp_tcd_pla.py` + `ezeh_data.py`, `ezeh_geometry.py` | critical plane + TCD point method, notched printed PLA (Ezeh & Susmel 2020) -> `results/CP_TCD_PLA.md`, `CP_TCD_PLA_RMAX.md` |
@@ -17,6 +17,7 @@ checks, and the limits found by an independent audit are stated in the reports.
 | `cp_duda_cfrp.py` + `duda_data.py` | non-proportional tension-torsion CFRP tubes, 3 R x 3 phases (Duda et al. 2025) -> `results/CP_DUDA_CFRP.md` |
 | `ecp_data.py`, `ecp_chiocca.py` | Effective Critical Plane (Chiocca & Frendo, IJF 2024) reimplemented on their En3B data (21 notched series, axial / torsion / in- and out-of-phase): exact reproduction, predictive vs self-fit scatter, r_c and corrector sensitivity -> `results/ECP_CHIOCCA.md` |
 | `ecp_fe.py` | the same specimens rebuilt in NGSolve (axisymmetric bars, 3D plates), ECP factors with `cplane`, end-to-end calibration -> prediction on our own factors -> `results/ECP_FE.md` |
+| `ecp_amp.py` | shear-amplitude measure (MCC / MRH / path length) for the 90 deg out-of-phase ECP series -> `results/ECP_AMPLITUDE.md` |
 | `results/TOOLCHAIN.md` | toolchain decision, CalculiX gotchas, review of Abaqus-Fatigue-Fracture-Tools |
 
 ## Quick start
@@ -52,11 +53,12 @@ res["value"], res["normal"], res["tau_a"], res["sn_a"], res["sn_m"]
 
 ## Open items and limits (from the audit)
 
-- **ECP:** the 90 deg out-of-phase series depend on the shear-amplitude measure. With MCC (as in `cplane`) they
-  are 3-5x non-conservative; their MPHP correction makes them 1.8-2.6x conservative. In two 90 deg series our
-  global-maximum factor exceeds theirs (1.26x and 1.09x), consistent with a local optimum in their search. The data
-  are steel (En3B), not printed polymer.
-
+- **ECP, out-of-phase loading:** the shear-amplitude measure decides the result. On the 41 specimens at 90 deg
+  (no parameter fitted) the mean log10 life error is: MCC -0.51 (3.2x unsafe), MRH -0.33, path length / 4 -0.17
+  (73 % within a factor of 3), their MPHP corrector +0.41. Use `amplitude="length"` for non-proportional loading
+  of ductile metals. The V-notch r = 0.2 mm series at R = -1 stays 4x unsafe with every measure except their
+  corrector. In two 90 deg series our global-maximum factor exceeds theirs (1.26x, 1.09x), consistent with a
+  local optimum in their search. The data are steel (En3B), not printed polymer.
 - **Ezeh & Susmel PLA:** it is unverified whether Table 1 sigma_A at R = 0 is the amplitude or the maximum stress.
   Under the maximum-stress reading, plain max-stress TCD is best (rms log10 0.43) and the mean-stress conclusions
   reverse. Both readings are reported.
