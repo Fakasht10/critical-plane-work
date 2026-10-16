@@ -287,7 +287,7 @@ def fs_path(A_ax, A_to, sa, ta, phase, R, nt=72):
 
 # ------------------------------------------------------------------------------------------------ study
 LEVELS_BAR = (0.02, 0.01)
-LEVELS_PLATE = {"V_notch": (0.04, 0.025), "U_notch": (0.08, 0.05), "Hole_8": (0.08, 0.05), "Hole_3_5": (0.08, 0.05)}
+LEVELS_PLATE = {"V_notch": (0.03, 0.02), "U_notch": (0.08, 0.05), "Hole_8": (0.08, 0.05), "Hole_3_5": (0.08, 0.05)}
 
 
 def our_series(S, bars, plates, corrector=True):
@@ -336,7 +336,8 @@ def run():
                                       np.max(np.abs(res[1]["A_ax"])))))
     plates = {}
     for g, hs in LEVELS_PLATE.items():
-        res = [plate_factors(g, h, 2 * h) for h in hs]
+        kw = dict(z_hot=0.0, r_fine=0.35, line=4.0) if g == "V_notch" else {}   # mid-plane hot spot (tau 1.38x surface)
+        res = [plate_factors(g, h, **kw) for h in hs]
         plates[g] = res[-1]
         conv.append(dict(geom=g, Kt_paper=KT_PAPER[g], hot=res[-1]["hot"],
                          levels=[dict(h=r["h"], Kt=r["Kt"], ndof=r["ndof"], t=r["t"]) for r in res],
