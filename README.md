@@ -53,7 +53,7 @@ res["value"], res["normal"], res["tau_a"], res["sn_a"], res["sn_m"]
 ## Open items and limits (from the audit)
 
 - **ECP:** the 90 deg out-of-phase series depend on the shear-amplitude measure. With MCC (as in `cplane`) they
-  are 3-5x non-conservative; their MPHP correction makes them 2-2.5x conservative. In two 90 deg series our
+  are 3-5x non-conservative; their MPHP correction makes them 1.8-2.6x conservative. In two 90 deg series our
   global-maximum factor exceeds theirs (1.26x and 1.09x), consistent with a local optimum in their search. The data
   are steel (En3B), not printed polymer.
 
