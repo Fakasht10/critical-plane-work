@@ -18,6 +18,7 @@ checks, and the limits found by an independent audit are stated in the reports.
 | `ecp_data.py`, `ecp_chiocca.py` | Effective Critical Plane (Chiocca & Frendo, IJF 2024) reimplemented on their En3B data (21 notched series, axial / torsion / in- and out-of-phase): exact reproduction, predictive vs self-fit scatter, r_c and corrector sensitivity -> `results/ECP_CHIOCCA.md` |
 | `ecp_fe.py` | the same specimens rebuilt in NGSolve (axisymmetric bars, 3D plates), ECP factors with `cplane`, end-to-end calibration -> prediction on our own factors -> `results/ECP_FE.md` |
 | `ecp_amp.py` | shear-amplitude measure (MCC / MRH / path length) for the 90 deg out-of-phase ECP series -> `results/ECP_AMPLITUDE.md` |
+| `ecp_compare.py` | ECP (volume average) vs point method (TCD PM), FS vs SWT, constant vs life-dependent length, same 2-series calibration -> `results/ECP_COMPARE.md` |
 | `results/TOOLCHAIN.md` | toolchain decision, CalculiX gotchas, review of Abaqus-Fatigue-Fracture-Tools |
 
 ## Quick start
@@ -50,6 +51,11 @@ res["value"], res["normal"], res["tau_a"], res["sn_a"], res["sn_m"]
   ANSYS factors within 2 % (cylindrical bars) and 3-7 % (flat plates) at r_c = 0.2 mm. With our factors, predicted
   lives for the 19 prevision series are E_N = +0.07 ± 0.42 decades (theirs -0.00 ± 0.44), 74 % within a factor
   of 3, at the same calibrated r_c of 0.22 mm.
+
+- ECP vs point method (En3B, 19 predicted series): FS with the path-length amplitude at a point d = 0.11 mm
+  (= r_c / 2, the classic TCD relation) predicts best, rms 0.36 decades and 80 % within a factor of 3, against
+  0.39 for the volume average and 0.44 for the paper's ECP-FS. SWT fails on torsion and 90 deg loading in both
+  forms. A life-dependent length lowers the calibration scatter but not the prediction error.
 
 ## Open items and limits (from the audit)
 

@@ -237,7 +237,7 @@ def figures(o):
                   title="ECP (sphere / disc average)" if kind == "ECP" else "point method (TCD PM)",
                   ylim=(1, 3), xlim=(0, 0.5))
     ax[0].set_ylabel("calibration scatter $T$ (V-notch + hole 8)")
-    ax[1].legend(fontsize=7)
+    ax[1].legend(fontsize=7, title="FS (MCC) = FS (length/4) here:\ncalibration is proportional", title_fontsize=6.5)
     _save(fig, OUT, "ecp_compare_calibration")
 
     tags = [f"{p}, {k}" for p in COL for k in ("ECP", "PM")]
@@ -272,11 +272,20 @@ def report(o):
     r = o["swt_repro"]
     L = ["# ECP vs point method, FS vs SWT: our pipeline on the Chiocca & Frendo / Susmel & Taylor En3B data", "",
          "**Summary.**",
-         f"* **Best overall: {best[0]}, {'constant' if best[1] == 'const' else 'life-dependent'} length** "
-         f"(rms E_N {best[2]:.2f} decades on the 19 prevision series).",
+         f"* **Recommended: FS (path length / 4) at a point, constant d = {pm['x']:.2f} mm.** rms E_N on the 19 "
+         f"prevision series is {pm['groups']['all 19']['rms']:.2f} decades, with {100 * pm['groups']['all 19']['in3']:.0f} % "
+         f"within a factor of 3. The lowest rms is {best[0]} with a {'constant' if best[1] == 'const' else 'life-dependent'} "
+         f"length ({best[2]:.2f}), a marginal gain for one more parameter. The paper's ECP-FS with MPHP gives 0.44.",
          f"* **Averaging vs point (FS, path-length amplitude, constant length).**",
          f"  * ECP: r_c = {ecp['x']:.3f} mm, E_N {f(ecp['groups']['all 19'])}.",
          f"  * Point method: d = {pm['x']:.3f} mm, E_N {f(pm['groups']['all 19'])}.",
+         f"* **Point method ≈ ECP, with d ≈ r_c / 2** ({pm['x']:.2f} vs {ecp['x']:.2f} mm). This is the classic "
+         "TCD relation (point at L/2, area or volume of size ~L), so the volume average adds no information the "
+         "point method lacks on this data set. The PM is slightly better on 90 deg (mean "
+         f"{pm['groups']['90 deg']['mean']:+.2f} vs {ecp['groups']['90 deg']['mean']:+.2f}) and more conservative on "
+         f"torsion ({pm['groups']['torsion']['mean']:+.2f} vs {ecp['groups']['torsion']['mean']:+.2f}).",
+         "* **The life-dependent length x(N) barely helps.** It lowers the calibration scatter (1.17 → 1.10) but not "
+         "the prediction error (rms 0.36 → 0.35), so the constant length is preferred.",
          f"* **SWT is the wrong parameter for this steel, in both forms** (all-19 rms: ECP "
          f"{M['SWT, ECP']['const']['groups']['all 19']['rms']:.2f}, PM {M['SWT, PM']['const']['groups']['all 19']['rms']:.2f}; "
          f"FS ~{M['FS (length/4), ECP']['const']['groups']['all 19']['rms']:.2f}). "
@@ -301,6 +310,9 @@ def report(o):
             g = d[mode]["groups"]
             L.append(f"| {tag} | " + " | ".join(f(g[k]) for k in GROUPS) + f" | {g['all 19']['rms']:.2f} |")
     L += ["", "## Paper Table 4 (SWT, r_c = 0.25 mm): per-series self-fit T, ours vs paper",
+          "Not an FE check. Within a series every specimen has the same unit field, so SWT ∝ load² and the self-fit "
+          "T depends only on the test data. It confirms the data and the T formula, nothing more. The FE-sensitive "
+          "checks are the calibration T and the E_N values in the summary.", "",
           "| series | ours | paper |", "|---|---|---|"]
     for n, t in r["per"].items():
         L.append(f"| {n} | {t:.3f} | {PAPER_SWT[n]:.3f} |")
