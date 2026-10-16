@@ -422,6 +422,51 @@ def report(o):
     L = ["# ECP step 2: specimens rebuilt in NGSolve, ECP factors from `cplane`, compared with Chiocca & Frendo", ""]
     e = o["e2e"]
     k0, k1, k2, k3 = list(e)
+    cm = {c["name"]: c["ratio"][2] for c in o["comp"]}
+    flat = [v for n, v in cm.items() if n.startswith("Axial")]
+    good = [v for n, v in cm.items() if not n.startswith("Axial") and n not in
+            ("Multi_V_notch_02_Ph_90_R_-1", "Multi_V_notch_4_Ph_90_R_-1")]
+    L += ["**Summary.**",
+          f"* **The independent chain reproduces their factors.** At r_c = 0.2 mm, 11 of the 13 cylindrical series "
+          f"agree within {100 * max(abs(np.array(good) - 1)):.1f} % and the flat plates within "
+          f"{100 * max(abs(np.array(flat) - 1)):.1f} % (ours lower). Kt anchors agree within 2-5 %.",
+          f"* **Two 90 deg R = -1 series differ, and ours is the global maximum.** V-notch r = 0.2 is "
+          f"{cm['Multi_V_notch_02_Ph_90_R_-1']:.2f}x theirs and r = 4 is {cm['Multi_V_notch_4_Ph_90_R_-1']:.2f}x. Our "
+          "plane is confirmed by a 200k-normal brute force. Their value lies below even the classic max-shear-plane FS "
+          "for r = 0.2, and equals it for r = 4, which is consistent with a local optimum in their search.",
+          f"* **Predictions survive the swap of FE code.** With their calibration procedure on our factors, the "
+          f"prevision E_N is {e[k1]['all']['mean']:+.2f} ± {e[k1]['all']['std']:.2f} with "
+          f"{100 * e[k1]['all']['in3']:.0f} % within a factor of 3 (theirs: {e[k0]['all']['mean']:+.2f} ± "
+          f"{e[k0]['all']['std']:.2f}, {100 * e[k0]['all']['in3']:.0f} %). The calibrated r_c is the same, "
+          f"{e[k1]['rc_opt']:.3f} mm. So the ECP result is not an artefact of their FE models.",
+          f"* **The weak point is non-proportional loading, not FE.** With the plain MCC shear amplitude, the 90 deg "
+          f"series are non-conservative, with mean E_N {e[k2]['outphase']['mean']:+.2f} (ours) and "
+          f"{e[k3]['outphase']['mean']:+.2f} (theirs). With their MPHP factors they become conservative, "
+          f"{e[k1]['outphase']['mean']:+.2f} and {e[k0]['outphase']['mean']:+.2f}. Neither amplitude measure "
+          "centres the 90 deg data. Our higher global-max factors also push the 90 deg series further conservative.",
+          "",
+          "**Checklist.**",
+          "* **Theory.** FS = (τ_a / G)(1 + k σ_n,max / σ_y) on averaged tensors, with k = 0.4 and σ_y = 606.2. "
+          "The extended plane maximises the whole parameter. Uniaxial rows use the max-shear plane at unit load, as "
+          "their rows do. The MCC shear amplitude is exact (Welzl).",
+          "* **Physics.** Linear elastic En3B (E = 200 GPa, ν = 0.3).",
+          "  * Bars: 2D axisymmetric (u_r, u_z) plus a separate torsion problem (u_θ), on net nominal stress.",
+          "  * Plates: 3D, clamped bottom, uniform traction on top (free rotation, so the single-edge notches "
+          "bend), mid-plane symmetry, F = 1 N on a 150 mm² gross area.",
+          "  * Hot spot: on the root line, maximum τ_a. The V-notch peak is at mid-plane, 1.38× the surface value.",
+          "* **Numerics.** P2 elements on straight-sided simplices.",
+          "  * Local h: bars 0.02 → 0.01 mm (root ≤ r_n / 15); plates 0.08 → 0.05 mm; V-notch plate 0.03 → "
+          "0.02 mm in a 0.35 mm ball, with r_n / 6 at the root.",
+          "  * Solvers: direct sparse Cholesky, or CG + BDDC above 250k DOF.",
+          "  * Averages: quadrature-point integral means, with the 3D sphere mirrored across the mid-plane. Below "
+          "the quadrature spacing the point value is used.",
+          "  * Mesh convergence: averaged tensors change by ≤ 2.5 % between the two levels (table below).",
+          "  * Open: Kt sits 2–5 % above their FE values (the BC or nominal definition may differ). The flat "
+          "V-notch curve dips 12–17 % below their 6th-order fit at r_c = 0.05–0.15 mm, but is mesh-converged at "
+          "the calibrated 0.2 mm.",
+          "* **Visualisation.** `ecp_fe_factor_curves` compares the factor curves for 8 series. `ecp_fe_end_to_end` "
+          "shows the bias and scatter per loading family, for both factor sets and both amplitude measures.",
+          ""]
     L += ["## Mesh / Kt anchors",
           "| specimen | Kt paper (FE) | Kt here, coarse -> fine | DOF fine | max change of averaged tensor coarse->fine |",
           "|---|---|---|---|---|"]
