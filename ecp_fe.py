@@ -159,7 +159,11 @@ def bar_factors(rn, h_fine, order=6):
     Kt = (float(np.linalg.eigvalsh(cp.to_matrix(Sa_root[None]))[0, -1]), float(np.hypot(St_root[3], St_root[4])))
     pts, w, vals = cloud(mesh, [m["S_ax"], m["S_to"]], lambda c: np.hypot(c[:, 0] - r0, c[:, 1]) < 0.6, order)
     A_ax, A_to = averages(pts, w, vals, root, point_vals=[Sa_root, St_root])
-    return dict(rn=rn, h=h_fine, Kt=Kt, A_ax=A_ax, A_to=A_to, ndof=m["ndof"], t=m["t"], nq=len(pts))
+    # point-method line: notch bisector (radial, inward from the root at z = 0), distances RCS
+    P = mesh(r0 - np.maximum(RCS, 1e-9), np.zeros(RCS.size))
+    L_ax, L_to = (np.asarray(m[k](P)).reshape(RCS.size, 6) for k in ("S_ax", "S_to"))
+    return dict(rn=rn, h=h_fine, Kt=Kt, A_ax=A_ax, A_to=A_to, L_ax=L_ax, L_to=L_to, ndof=m["ndof"], t=m["t"],
+                nq=len(pts))
 
 
 # ------------------------------------------------------------------------------------------------ flat 3D plates
@@ -261,7 +265,10 @@ def plate_factors(geom, h_fine, h_line=None, order=4, z_hot=None, **mk):
         w = np.r_[w, w]
         vals = [np.vstack([vals[0], vals[0] * [1, 1, 1, 1, -1, -1]])]
     A = averages(pts, w, vals, hs, point_vals=[S_hs])[0]
-    return dict(geom=geom, h=h_fine, Kt=s1 * A_GROSS, hot=hs.tolist(), A=A, ndof=m["ndof"], t=m["t"], nq=len(pts),
+    side = 1.0 if FLAT[geom]["kind"] == "H" else -1.0                  # bisector into the material from the hot spot
+    P = m["mesh"](hs[0] + side * np.maximum(RCS, 1e-6), np.zeros(RCS.size), np.full(RCS.size, hs[2]))
+    Lline = np.asarray(m["S"](P)).reshape(RCS.size, 6)
+    return dict(geom=geom, h=h_fine, Kt=s1 * A_GROSS, hot=hs.tolist(), A=A, L=Lline, ndof=m["ndof"], t=m["t"], nq=len(pts),
                 tau_z=np.c_[z, tz].tolist(), z_hot=z_hot)
 
 
@@ -286,15 +293,16 @@ def fs_path(A_ax, A_to, sa, ta, phase, R, nt=72, amplitude="mcc"):
 
 
 # ------------------------------------------------------------------------------------------------ study
-CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ecp_fe_factors.npz")
+CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ecp_fe_factors_v2.npz")
 
 
 def factors(cache=CACHE):
-    """Averaged unit-load tensors on the finest mesh level of every specimen (cached; delete the file to recompute)."""
+    """Unit-load tensors on the finest mesh level of every specimen: sphere / disc averages A (radius RCS) and the
+    point-method line L (bisector distance RCS).  Cached; delete the file to recompute."""
     if cache and os.path.isfile(cache):
         z = np.load(cache)
-        bars = {g: dict(A_ax=z[f"{g}_ax"], A_to=z[f"{g}_to"]) for g in RN}
-        plates = {g: dict(A=z[f"{g}_A"]) for g in FLAT}
+        bars = {g: dict(A_ax=z[f"{g}_ax"], A_to=z[f"{g}_to"], L_ax=z[f"{g}_lax"], L_to=z[f"{g}_lto"]) for g in RN}
+        plates = {g: dict(A=z[f"{g}_A"], L=z[f"{g}_L"]) for g in FLAT}
         return bars, plates
     bars = {g: bar_factors(rn, LEVELS_BAR[-1]) for g, rn in RN.items()}
     plates = {}
@@ -304,7 +312,8 @@ def factors(cache=CACHE):
     if cache:
         os.makedirs(os.path.dirname(cache), exist_ok=True)
         np.savez(cache, **{f"{g}_ax": b["A_ax"] for g, b in bars.items()}, **{f"{g}_to": b["A_to"] for g, b in bars.items()},
-                 **{f"{g}_A": p["A"] for g, p in plates.items()})
+                 **{f"{g}_A": p["A"] for g, p in plates.items()}, **{f"{g}_L": p["L"] for g, p in plates.items()},
+                 **{f"{g}_lax": b["L_ax"] for g, b in bars.items()}, **{f"{g}_lto": b["L_to"] for g, b in bars.items()})
     return bars, plates
 
 LEVELS_BAR = (0.02, 0.01)
