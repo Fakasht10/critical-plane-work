@@ -194,3 +194,38 @@ def test_fatemi_socie_uniaxial_closed_form():
     r = cp.search_prop(v(xx=s), v(), cp.FatemiSocie(k, sy))
     assert r["value"][0] == pytest.approx(ref, rel=1e-8)
     assert np.all(r["bound"] >= r["value"])
+
+
+def test_amplitude_measures_closed_forms():
+    t = np.linspace(0, 2 * np.pi, 720, endpoint=False)
+    a, b = 3.0, 1.2
+    U, V = (a * np.cos(t))[None], (b * np.sin(t) + 5.0)[None]
+    assert cp.shear_amplitude(U, V, "mcc")[0] == pytest.approx(a, rel=1e-9)
+    assert cp.shear_amplitude(U, V, "mrh")[0] == pytest.approx(np.hypot(a, b), rel=1e-6)
+    from scipy.special import ellipe
+    per = 4 * a * ellipe(1 - (b / a) ** 2)
+    assert cp.shear_amplitude(U, V, "length")[0] == pytest.approx(per / 4, rel=1e-4)
+    x = np.sin(t)[None]                                              # straight back-and-forth path: all = half range
+    for m in ("mcc", "mrh", "length"):
+        assert cp.shear_amplitude(2 * x, 3 * x, m)[0] == pytest.approx(np.hypot(2, 3), rel=1e-5)
+
+
+@pytest.mark.parametrize("amp", ["mrh", "length"])
+def test_path_amplitudes_against_brute_force(amp):
+    t = np.linspace(0, 2 * np.pi, 64, endpoint=False)
+    rng = np.random.default_rng(21)
+    H = np.zeros((6, t.size, 6))
+    for p in range(6):
+        A, B = rng.normal(size=6), rng.normal(size=6)
+        H[p] = np.sin(t)[:, None] * A + np.cos(t + rng.uniform(0, 3))[:, None] * B
+    crit = cp.FatemiSocie(0.4, 3.0)
+    r = cp.search_path(H, crit, amplitude=amp)
+    N = cp.fib_hemisphere(30000)
+    ta, sa, sm = cp._quant_path(cp.proj_rows(N), H, amp)
+    brute = crit.objective(ta, sa, sm, N).max(1)
+    assert np.all(r["value"] >= brute - 1e-9)
+    assert np.max((r["value"] - brute) / brute) < 1e-3
+    assert np.all(r["bound"] >= r["value"])
+    a1 = cp.search_path(np.sin(t)[None, :, None] * H[:, 0][:, None, :], crit, amplitude=amp)["value"]
+    a0 = cp.search_path(np.sin(t)[None, :, None] * H[:, 0][:, None, :], crit)["value"]   # proportional: = MCC
+    np.testing.assert_allclose(a1, a0, rtol=1e-6)

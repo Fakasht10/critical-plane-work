@@ -276,21 +276,42 @@ def fs_uniaxial(A, R):
     return r["tau_a"] / G, r["sn_a"] + r["sn_m"]
 
 
-def fs_path(A_ax, A_to, sa, ta, phase, R, nt=72):
+def fs_path(A_ax, A_to, sa, ta, phase, R, nt=72, amplitude="mcc"):
     """FS (their 2FS-row convention, tau_a/G (1 + k sn_max/sy)) for a tension-torsion specimen at every r_c."""
     t = np.linspace(0, 2 * np.pi, nt, endpoint=False)
     mr = 0.0 if R == -1 else 1.0
     L = np.column_stack([sa * (mr + np.sin(t)), ta * (mr + np.sin(t - np.deg2rad(phase)))])
     H = cp.superpose(np.stack([A_ax, A_to]), L)                          # (n_rc, nt, 6)
-    return cp.search_path(H, FS)["value"] / G
+    return cp.search_path(H, FS, amplitude=amplitude)["value"] / G
 
 
 # ------------------------------------------------------------------------------------------------ study
+CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ecp_fe_factors.npz")
+
+
+def factors(cache=CACHE):
+    """Averaged unit-load tensors on the finest mesh level of every specimen (cached; delete the file to recompute)."""
+    if cache and os.path.isfile(cache):
+        z = np.load(cache)
+        bars = {g: dict(A_ax=z[f"{g}_ax"], A_to=z[f"{g}_to"]) for g in RN}
+        plates = {g: dict(A=z[f"{g}_A"]) for g in FLAT}
+        return bars, plates
+    bars = {g: bar_factors(rn, LEVELS_BAR[-1]) for g, rn in RN.items()}
+    plates = {}
+    for g, hs in LEVELS_PLATE.items():
+        kw = dict(z_hot=0.0, r_fine=0.35, line=4.0) if g == "V_notch" else {}
+        plates[g] = plate_factors(g, hs[-1], **kw)
+    if cache:
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        np.savez(cache, **{f"{g}_ax": b["A_ax"] for g, b in bars.items()}, **{f"{g}_to": b["A_to"] for g, b in bars.items()},
+                 **{f"{g}_A": p["A"] for g, p in plates.items()})
+    return bars, plates
+
 LEVELS_BAR = (0.02, 0.01)
 LEVELS_PLATE = {"V_notch": (0.03, 0.02), "U_notch": (0.08, 0.05), "Hole_8": (0.08, 0.05), "Hole_3_5": (0.08, 0.05)}
 
 
-def our_series(S, bars, plates, corrector=True):
+def our_series(S, bars, plates, corrector=True, amplitude="mcc"):
     """Same series as ecp_data.load, with fs(rc) rebuilt from our FE factors (finest mesh), same conventions."""
     out = []
     for s in S:
@@ -312,7 +333,7 @@ def our_series(S, bars, plates, corrector=True):
             s["rows"] = (row1, row2)
         else:
             b = bars[g]
-            v = 0.5 * np.array([fs_path(b["A_ax"], b["A_to"], sa, ta, s["phase"], s["R"])
+            v = 0.5 * np.array([fs_path(b["A_ax"], b["A_to"], sa, ta, s["phase"], s["R"], amplitude=amplitude)
                                 for sa, ta in zip(s["S"], s["tau"])])
         if corrector:
             v = s["corr"][:, None] * v

@@ -269,6 +269,51 @@ if numba is not None:
                         r2 = ox * ox + oy * oy
         return np.sqrt(r2)
 
+    @numba.njit(cache=True)
+    def _hull_half(x, y, c, s):
+        lo1, hi1, lo2, hi2 = np.inf, -np.inf, np.inf, -np.inf
+        for t in range(x.size):
+            p = c * x[t] + s * y[t]
+            q = -s * x[t] + c * y[t]
+            lo1, hi1, lo2, hi2 = min(lo1, p), max(hi1, p), min(lo2, q), max(hi2, q)
+        return 0.25 * ((hi1 - lo1) ** 2 + (hi2 - lo2) ** 2)
+
+    @numba.njit(cache=True)
+    def _mrh(x, y):
+        """Maximum rectangular hull (Araujo et al. 2011): max over orientations phi of the half-diagonal
+        sqrt(a1^2 + a2^2) of the bounding rectangle.  48-point scan of phi in [0, pi/2) + golden-section polish."""
+        n = 48
+        best, ib = -1.0, 0
+        for i in range(n):
+            ph = 0.5 * np.pi * i / n
+            v = _hull_half(x, y, np.cos(ph), np.sin(ph))
+            if v > best:
+                best, ib = v, i
+        a, b = 0.5 * np.pi * (ib - 1) / n, 0.5 * np.pi * (ib + 1) / n
+        g = 0.6180339887498949
+        c1, c2 = b - g * (b - a), a + g * (b - a)
+        f1, f2 = _hull_half(x, y, np.cos(c1), np.sin(c1)), _hull_half(x, y, np.cos(c2), np.sin(c2))
+        for _ in range(40):
+            if f1 > f2:
+                b, c2, f2 = c2, c1, f1
+                c1 = b - g * (b - a)
+                f1 = _hull_half(x, y, np.cos(c1), np.sin(c1))
+            else:
+                a, c1, f1 = c1, c2, f2
+                c2 = a + g * (b - a)
+                f2 = _hull_half(x, y, np.cos(c2), np.sin(c2))
+        return np.sqrt(max(best, f1, f2))
+
+    @numba.njit(cache=True)
+    def _plen(x, y):
+        """Length of the closed shear path (last point joined to the first)."""
+        T = x.size
+        L = 0.0
+        for t in range(T):
+            u = (t + 1) % T
+            L += np.sqrt((x[u] - x[t]) ** 2 + (y[u] - y[t]) ** 2)
+        return L
+
     @numba.njit(parallel=True, cache=True)
     def _mcc_batch(U, V):
         R = U.shape[0]
@@ -276,6 +321,24 @@ if numba is not None:
         for r in numba.prange(R):
             out[r] = _mcc(U[r], V[r])
         return out
+
+    @numba.njit(parallel=True, cache=True)
+    def _amp_batch(U, V, mode):
+        R = U.shape[0]
+        out = np.empty(R)
+        for r in numba.prange(R):
+            out[r] = _mcc(U[r], V[r]) if mode == 1 else (_mrh(U[r], V[r]) if mode == 2 else _plen(U[r], V[r]) / 4.0)
+        return out
+
+
+def shear_amplitude(U, V, amplitude="mcc"):
+    """Shear amplitude of the 2D paths (U[..., t], V[..., t]) by the chosen measure (see search_path)."""
+    sh = U.shape[:-1]
+    U = np.asarray(U, float).reshape(-1, U.shape[-1])
+    V = np.asarray(V, float).reshape(-1, V.shape[-1])
+    U = np.ascontiguousarray(U - U[:, :1])
+    V = np.ascontiguousarray(V - V[:, :1])
+    return _amp_batch(U, V, AMPLITUDE[amplitude]).reshape(sh)
 
 
 def mcc_radius(U, V):
@@ -303,8 +366,8 @@ def _quant_prop(W, Sa, Sm):
     return np.hypot(X[..., 1], X[..., 2]), np.abs(X[..., 0]), snm
 
 
-def _quant_path(W, H):
-    """H (P, T, 6) one cycle. Returns tau_a (MCC), sn_a, sn_m."""
+def _quant_path(W, H, amplitude="mcc"):
+    """H (P, T, 6) one cycle. Returns tau_a (by `amplitude`), sn_a, sn_m."""
     if W.ndim == 3:
         M = W.shape[0]
         Y = (H.reshape(-1, 6) @ W.reshape(-1, 6).T).reshape(H.shape[0], H.shape[1], M, 3)
@@ -313,7 +376,7 @@ def _quant_path(W, H):
         Y = np.einsum("p...cj,ptj->p...tc", W, H)
     sn = Y[..., 0]
     hi, lo = sn.max(-1), sn.min(-1)
-    return mcc_radius(Y[..., 1], Y[..., 2]), 0.5 * (hi - lo), 0.5 * (hi + lo)
+    return shear_amplitude(Y[..., 1], Y[..., 2], amplitude), 0.5 * (hi - lo), 0.5 * (hi + lo)
 
 
 # ----------------------------------------------------------------------------------------------- Numba search core
@@ -363,7 +426,8 @@ if numba is not None:
 
     @numba.njit(cache=True)
     def _eval(mode, A, B, n0, n1, n2, code, prm, d, poly, bu, bv, q3):
-        """mode 0: A[0] = amplitude, B[0] = mean;  mode 1: A = path (T, 6).  q3 <- (tau_a, sn_a, sn_m)."""
+        """mode 0: A[0] = amplitude, B[0] = mean;  mode >= 1: A = path (T, 6), shear amplitude by mode
+        (1 MCC, 2 MRH, 3 path length / 4).  q3 <- (tau_a, sn_a, sn_m)."""
         if mode == 0:
             sn, rx, ry, rz = _sn_tau(A[0], n0, n1, n2)
             ta, sa = np.sqrt(rx * rx + ry * ry + rz * rz), abs(sn)
@@ -380,7 +444,13 @@ if numba is not None:
             for t in range(A.shape[0]):                       # translate: MCC precision at large offsets
                 bu[t] -= u0
                 bv[t] -= v0
-            ta, sa, sm = _mcc(bu, bv), 0.5 * (hi - lo), 0.5 * (hi + lo)
+            if mode == 1:
+                ta = _mcc(bu, bv)
+            elif mode == 2:
+                ta = _mrh(bu, bv)
+            else:
+                ta = _plen(bu, bv) / 4.0
+            sa, sm = 0.5 * (hi - lo), 0.5 * (hi + lo)
         q3[0], q3[1], q3[2] = ta, sa, sm
         return _obj(code, prm, ta, sa, sm) / _strength_at(poly, d, n0, n1, n2)
 
@@ -474,7 +544,7 @@ if numba is not None:
                                      code, prm, d, poly, bu, bv, q3)
             if fj > f:
                 f, n0, n1, n2 = fj, m0, m1, m2
-        if mode == 1 or poly.size > 0:                         # polish: MCC creases (path) and the |n.d| crease of
+        if mode >= 1 or poly.size > 0:                         # polish: MCC creases (path) and the |n.d| crease of
                                                                # anisotropic strength can stall any local ascent;
             g, rad = 9, 0.5 * h0                               # re-seed from a 9 x 9 local grid while it improves
             for rep in range(4):
@@ -528,7 +598,7 @@ if numba is not None:
     @numba.njit(parallel=True, cache=True)
     def _search_nb(mode, A, B, N, NB, q, h0, tol, code, prm, d, poly, out_v, out_q, out_n):
         P, M = A.shape[0], N.shape[0]
-        T = A.shape[1] if mode == 1 else 1
+        T = A.shape[1] if mode >= 1 else 1
         for p in numba.prange(P):
             _point(mode, A[p], B[p], N, NB, q, h0, tol, code, prm, d, poly, out_v, out_q, out_n, p, T, M)
 
@@ -572,8 +642,17 @@ def search_prop(Sa, Sm, crit, n_coarse=800, q=4, tol=2e-4, screen=0.0, chunk=409
     return _run(0, Sa[:, None, :], Sm[:, None, :], bound, crit, n_coarse, q, tol, screen, chunk)
 
 
-def search_path(H, crit, n_coarse=400, q=4, tol=2e-4, screen=0.0, chunk=512):
-    """One cycle of a general (non-proportional) path.  H: (P, T, 6)."""
+AMPLITUDE = {"mcc": 1, "mrh": 2, "length": 3}
+
+
+def search_path(H, crit, n_coarse=400, q=4, tol=2e-4, screen=0.0, chunk=512, amplitude="mcc"):
+    """One cycle of a general (non-proportional) path.  H: (P, T, 6), sampled uniformly over one closed cycle.
+    amplitude: shear amplitude on each plane -
+      'mcc'    minimum circumscribed circle radius (default; exact, Welzl);
+      'mrh'    maximum rectangular hull half-diagonal (Araujo et al. 2011);  ellipse a, b -> sqrt(a^2 + b^2);
+      'length' path length / 4 (a half-perimeter measure);  ellipse -> perimeter / 4, circle -> pi a / 2.
+    All three equal the half-range for proportional (straight-line) paths."""
+    mode = AMPLITUDE[amplitude]
     H = np.asarray(H, float)
     if H.ndim == 2:
         H = H[None]
@@ -582,8 +661,15 @@ def search_path(H, crit, n_coarse=400, q=4, tol=2e-4, screen=0.0, chunk=512):
     TB = 0.5 * (l[..., 2] - l[..., 0]).max(1)
     AB = np.abs(l).max((1, 2))
     NB = _eig(H)[..., 2].max(1)
+    # MRH <= sqrt(2) MCC; path length / 4 <= (pi / 2) MCC for convex paths but unbounded for general ones, so the
+    # screening bound uses the path length of the deviatoric history (Tresca-type upper bound on every plane)
+    if mode == 2:
+        TB = np.sqrt(2.0) * TB
+    elif mode == 3:
+        dH = np.diff(np.concatenate([H, H[:, :1]], 1), axis=1)
+        TB = 0.25 * np.abs(_eig(dH)).max(-1).sum(1)
     bound = crit.bound(TB, AB, NB)
-    return _run(1, H, np.zeros((len(H), 1, 6)), bound, crit, n_coarse, q, tol, screen, chunk)
+    return _run(mode, H, np.zeros((len(H), 1, 6)), bound, crit, n_coarse, q, tol, screen, chunk)
 
 
 def superpose(unit_fields, loads):
