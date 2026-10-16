@@ -201,6 +201,27 @@ class WalkerStress(Criterion):
         return np.maximum(NB, 0.0) ** (1 - self.gamma) * AB ** self.gamma
 
 
+class FatemiSocie(Criterion):
+    """Fatemi-Socie in stress units for linear elasticity: tau_a (1 + k sigma_n,max / sigma_y).
+    Engineering shear-strain amplitude = tau_a / G on every plane, so FS = value / G.  Here the plane maximises the
+    whole parameter (the 'extended' FS of Chiocca et al.); the classic choice (plane of max shear amplitude) is
+    MWCM's plane - evaluate `raw` on its tau_a, sn_a, sn_m."""
+    name, code = "fs", 4
+
+    def __init__(self, k, sy, **kw):
+        super().__init__(**kw)
+        if k < 0 or sy <= 0:
+            raise ValueError("FS needs k >= 0, sigma_y > 0")
+        self.k, self.sy = float(k), float(sy)
+        self.prm = self.k / self.sy
+
+    def raw(self, tau_a, sn_a, sn_m):
+        return tau_a * (1.0 + self.prm * (sn_m + sn_a))
+
+    def raw_bound(self, TB, AB, NB):
+        return TB * (1.0 + self.prm * np.maximum(NB, 0.0))
+
+
 def mwcm_life(tau_a, sn_a, sn_m, tau_A_of_rho, k_of_rho, NA=2e6, m=1.0, rho_lim=None):
     """N = NA (tau_A,ref(rho) / tau_a)^k(rho),  rho_eff = (m sn_m + sn_a) / tau_a (capped at rho_lim)."""
     rho = (m * sn_m + sn_a) / np.maximum(tau_a, 1e-300)
@@ -306,6 +327,8 @@ if numba is not None:
         if code == 2:
             x = (sm + sa) * sa
             return np.sqrt(x) if sm + sa > 0.0 else 0.0
+        if code == 4:                                                   # Fatemi-Socie, prm = k / sigma_y
+            return ta * (1.0 + prm * (sm + sa))
         smax = sm + sa                                                  # code 3: Walker, prm = gamma
         return smax ** (1.0 - prm) * sa ** prm if smax > 0.0 else 0.0
 

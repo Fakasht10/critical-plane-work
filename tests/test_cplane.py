@@ -82,7 +82,7 @@ def test_path_equals_prop_for_proportional_history():
     np.testing.assert_allclose(a["value"], b["value"], rtol=1e-6)
 
 
-@pytest.mark.parametrize("crit", [cp.Findley(0.3), cp.SWTStress(), cp.MWCM()])
+@pytest.mark.parametrize("crit", [cp.Findley(0.3), cp.SWTStress(), cp.MWCM(), cp.FatemiSocie(0.4, 2.0)])
 def test_against_dense_brute_force(crit):
     rng = np.random.default_rng(4)
     Sa, Sm = rng.normal(size=(200, 6)), 0.5 * rng.normal(size=(200, 6))
@@ -184,3 +184,13 @@ def test_mcc_large_offset():
     t = rng.permutation(np.linspace(0, 2 * np.pi, 50, endpoint=False))
     r = cp.mcc_radius((1e8 + 1e-3 * np.cos(t))[None], (-3e7 + 1e-3 * np.sin(t))[None])[0]
     assert r == pytest.approx(1e-3, rel=5e-5)      # inputs at 1e8 are quantised to ~1.5e-8 (1.5e-5 of the radius)
+
+
+def test_fatemi_socie_uniaxial_closed_form():
+    """sigma = s sin t: on the plane at angle th, tau_a = s sin th cos th, sn_max = s cos^2 th."""
+    s, k, sy = 3.0, 0.4, 2.0
+    th = np.linspace(0, np.pi / 2, 200001)
+    ref = np.max(s * np.sin(th) * np.cos(th) * (1 + k / sy * s * np.cos(th) ** 2))
+    r = cp.search_prop(v(xx=s), v(), cp.FatemiSocie(k, sy))
+    assert r["value"][0] == pytest.approx(ref, rel=1e-8)
+    assert np.all(r["bound"] >= r["value"])
